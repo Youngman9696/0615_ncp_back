@@ -1,17 +1,12 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
-const uploadDir = process.env.UPLOAD_DIR || 'uploads';
-fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
-    cb(null, uniqueName);
+// Object Storage에 업로드하기 위해 파일을 서버 디스크가 아니라 메모리에 잠시 보관합니다.
+// req.file.buffer 안에 업로드된 파일 데이터가 들어갑니다.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024
   }
 });
 
-module.exports = multer({ storage });
+module.exports = upload;

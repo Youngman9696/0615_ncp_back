@@ -8,7 +8,8 @@
     "dotenv": "latest",
     "express": "latest",
     "multer": "latest",
-    "mysql2": "latest"
+    "mysql2": "latest",
+    "@aws-sdk/client-s3": "latest"
   },
   "devDependencies": {}
 }

@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS diaries (
   content TEXT NOT NULL,
 
   original_file_name VARCHAR(255) NULL,
-  stored_file_name VARCHAR(255) NULL,
+  stored_file_name VARCHAR(500) NULL,
   file_size BIGINT NULL,
 
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

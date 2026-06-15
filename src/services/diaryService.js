@@ -1,30 +1,9 @@
-const fs = require("fs");
-const path = require("path");
-const pool = require("../config/db");
-
-const UPLOAD_DIR = process.env.UPLOAD_DIR || "uploads";
-
-function normalizeFileName(fileName) {
-  if (!fileName) return null;
-
-  const decodedFileName = Buffer.from(fileName, "latin1").toString("utf8");
-
-  if (decodedFileName.includes("�")) {
-    return fileName;
-  }
-
-  return decodedFileName;
-}
-
-function toDiaryFile(file) {
-  if (!file) return {};
-
-  return {
-    storedFileName: file.filename,
-    originalFileName: normalizeFileName(file.originalname),
-    fileSize: file.size,
-  };
-}
+const pool = require('../config/db');
+const {
+  uploadFileToObjectStorage,
+  getFileFromObjectStorage,
+  deleteFileFromObjectStorage
+} = require('./objectStorageService');
 
 async function getDiaries(page = 0, size = 10) {
   const limit = Number(size);
@@ -35,7 +14,7 @@ async function getDiaries(page = 0, size = 10) {
      FROM diaries
      ORDER BY id DESC
      LIMIT :limit OFFSET :offset`,
-    { limit, offset },
+    { limit, offset }
   );
 
   const [nextRows] = await pool.query(
@@ -43,12 +22,12 @@ async function getDiaries(page = 0, size = 10) {
      FROM diaries
      ORDER BY id DESC
      LIMIT 1 OFFSET :nextOffset`,
-    { nextOffset: offset + limit },
+    { nextOffset: offset + limit }
   );
 
   return {
     items: rows,
-    hasMore: nextRows.length > 0,
+    hasMore: nextRows.length > 0
   };
 }
 
@@ -58,13 +37,13 @@ async function getDiaryById(id) {
             content, stored_file_name, original_file_name, file_size
      FROM diaries
      WHERE id = :id`,
-    { id },
+    { id }
   );
   return rows[0];
 }
 
 async function createDiary({ title, diaryDate, content }, file) {
-  const fileData = toDiaryFile(file);
+  const fileData = await uploadFileToObjectStorage(file);
 
   const [result] = await pool.query(
     `INSERT INTO diaries
@@ -75,10 +54,10 @@ async function createDiary({ title, diaryDate, content }, file) {
       title,
       diaryDate,
       content,
-      storedFileName: fileData.storedFileName ?? null,
-      originalFileName: fileData.originalFileName ?? null,
-      fileSize: fileData.fileSize ?? null,
-    },
+      storedFileName: fileData?.storedFileName ?? null,
+      originalFileName: fileData?.originalFileName ?? null,
+      fileSize: fileData?.fileSize ?? null
+    }
   );
 
   return getDiaryById(result.insertId);
@@ -91,15 +70,18 @@ async function updateDiary(id, { title, diaryDate, content }, file) {
   let fileData = {
     storedFileName: current.stored_file_name,
     originalFileName: current.original_file_name,
-    fileSize: current.file_size,
+    fileSize: current.file_size
   };
 
   if (file) {
+    const uploadedFile = await uploadFileToObjectStorage(file);
+
+    // 새 파일 업로드가 성공한 뒤 기존 Object Storage 파일을 삭제합니다.
     if (current.stored_file_name) {
-      const oldPath = path.join(UPLOAD_DIR, current.stored_file_name);
-      if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+      await deleteFileFromObjectStorage(current.stored_file_name);
     }
-    fileData = toDiaryFile(file);
+
+    fileData = uploadedFile;
   }
 
   await pool.query(
@@ -118,8 +100,8 @@ async function updateDiary(id, { title, diaryDate, content }, file) {
       content,
       storedFileName: fileData.storedFileName,
       originalFileName: fileData.originalFileName,
-      fileSize: fileData.fileSize,
-    },
+      fileSize: fileData.fileSize
+    }
   );
 
   return getDiaryById(id);
@@ -132,8 +114,7 @@ async function deleteDiary(id) {
   await pool.query(`DELETE FROM diaries WHERE id = :id`, { id });
 
   if (current.stored_file_name) {
-    const filePath = path.join(UPLOAD_DIR, current.stored_file_name);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    await deleteFileFromObjectStorage(current.stored_file_name);
   }
 
   return true;
@@ -143,12 +124,12 @@ async function getDownloadInfo(id) {
   const diary = await getDiaryById(id);
   if (!diary || !diary.stored_file_name) return null;
 
-  const filePath = path.join(UPLOAD_DIR, diary.stored_file_name);
-  if (!fs.existsSync(filePath)) return null;
+  const object = await getFileFromObjectStorage(diary.stored_file_name);
 
   return {
-    filePath,
-    originalFileName: diary.original_file_name || diary.stored_file_name,
+    body: object.Body,
+    contentType: object.ContentType || 'application/octet-stream',
+    originalFileName: diary.original_file_name || 'download-file'
   };
 }
 
@@ -158,5 +139,5 @@ module.exports = {
   createDiary,
   updateDiary,
   deleteDiary,
-  getDownloadInfo,
+  getDownloadInfo
 };

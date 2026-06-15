@@ -1,3 +1,4 @@
+const { Readable } = require('stream');
 const diaryService = require('../services/diaryService');
 
 async function list(req, res, next) {
@@ -53,7 +54,19 @@ async function download(req, res, next) {
   try {
     const info = await diaryService.getDownloadInfo(req.params.id);
     if (!info) return res.status(404).json({ message: '파일을 찾을 수 없습니다.' });
-    res.download(info.filePath, info.originalFileName);
+
+    const encodedFileName = encodeURIComponent(info.originalFileName);
+
+    res.setHeader('Content-Type', info.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodedFileName}`);
+
+    if (info.body.pipe) {
+      info.body.pipe(res);
+      return;
+    }
+
+    // 일부 런타임에서 Web Stream으로 반환될 때 대비합니다.
+    Readable.fromWeb(info.body).pipe(res);
   } catch (err) {
     next(err);
   }
